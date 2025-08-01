@@ -1,0 +1,149 @@
+name: Build Windows EXE
+
+# Ne zaman çalışacak
+on:
+  # Manuel çalıştırma
+  workflow_dispatch:
+  
+  # Tag'lerde otomatik çalışma (v1.0.0, v1.1.0 gibi)
+  push:
+    tags: ['v*']
+  
+  # Pull request'lerde test
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+    # 1. Kod'u checkout et
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    # 2. Python kurulumu (3.9 - En stabil tkinter desteği)
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9.16'  # Spesifik stabil versiyon
+    
+    # 3. Dependencies kurulumu
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        # PyInstaller'ın stabil versiyonu
+        pip install pyinstaller==5.13.0
+        # Tkinter için gerekli hook'lar
+        pip install pyinstaller-hooks-contrib
+    
+    # 4. Tkinter test
+    - name: Test Tkinter availability
+      run: |
+        python -c "import tkinter; print('✅ Tkinter OK')"
+        python -c "from PyInstaller.utils.hooks.tcl_tk import tcltk_info; print('Tcl/Tk:', tcltk_info.available)"
+    
+    # 5. EXE Build (Güvenli parametreler)
+    - name: Build EXE with PyInstaller
+      run: |
+        pyinstaller --onefile --windowed ^
+          --name="Karlilik-Analizi" ^
+          --add-data "C:/hostedtoolcache/windows/Python/3.9.16/x64/tcl/tcl8.6;tcl/" ^
+          --add-data "C:/hostedtoolcache/windows/Python/3.9.16/x64/tcl/tk8.6;tk/" ^
+          --hidden-import=tkinter ^
+          --hidden-import=tkinter.ttk ^
+          --hidden-import=tkinter.filedialog ^
+          --hidden-import=tkinter.messagebox ^
+          --exclude-module=matplotlib ^
+          --exclude-module=PIL ^
+          --exclude-module=PyQt5 ^
+          --strip ^
+          --noupx ^
+          gui.py
+    
+    # 5. EXE dosyasını test et
+    - name: Test EXE
+      run: |
+        echo "EXE dosyası oluşturuldu, test ediliyor..."
+        dir dist
+        if (Test-Path "dist/Karlilik-Analizi.exe") {
+          echo "✅ EXE dosyası başarıyla oluşturuldu!"
+          $size = (Get-Item "dist/Karlilik-Analizi.exe").Length / 1MB
+          echo "📦 Dosya boyutu: $([math]::Round($size, 2)) MB"
+        } else {
+          echo "❌ EXE dosyası oluşturulamadı!"
+          exit 1
+        }
+    
+    # 6. Artifacts upload (her build'de)
+    - name: Upload EXE as artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: Karlilik-Analizi-Windows
+        path: dist/Karlilik-Analizi.exe
+        retention-days: 30
+    
+    # 7. Release'e upload (sadece tag'lerde)
+    - name: Create Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/Karlilik-Analizi.exe
+        name: Karlılık Analizi ${{ github.ref_name }}
+        body: |
+          ## 🎉 Karlılık Analizi ${{ github.ref_name }}
+          
+          ### 📦 Windows Kullanıcıları İçin
+          - **Karlilik-Analizi.exe** dosyasını indirin
+          - Çift tıklayarak çalıştırın
+          - Python kurulumuna gerek yoktur
+          
+          ### 🔧 Değişiklikler
+          - Bu sürümdeki yenilikler burada listelenecek
+          
+          ### 💾 Sistem Gereksinimleri
+          - Windows 10/11
+          - 64-bit sistem
+          - En az 4GB RAM
+          
+          ---
+          
+          📝 **Sorun yaşarsanız:** [Issues](https://github.com/alibedirhan/CAL-Karlilik-Analizi/issues) sayfasından bildirebilirsiniz.
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Opsiyonel: Linux için de build
+  build-linux:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+    
+    - name: Build Linux executable
+      run: |
+        pyinstaller --onefile --name="karlilik-analizi-linux" gui.py
+    
+    - name: Upload Linux executable
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          dist/karlilik-analizi-linux
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
