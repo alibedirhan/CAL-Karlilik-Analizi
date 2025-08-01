@@ -1,0 +1,8 @@
+
+# PyInstaller build dosyaları
+build/
+dist/
+*.spec
+__pycache__/
+*.pyc
+*.log
