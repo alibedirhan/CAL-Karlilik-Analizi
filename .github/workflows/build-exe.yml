@@ -1,6 +1,11 @@
 # Basit versiyon - sadece Windows EXE
 name: Build Windows EXE
 
+# İzinler ekle
+permissions:
+  contents: write
+  releases: write
+
 on:
   workflow_dispatch:
   push:
