@@ -1,15 +1,16 @@
-# Basit versiyon - sadece Windows EXE
 name: Build Windows EXE
 
-# İzinler ekle
+# GitHub Actions izinleri
 permissions:
   contents: write
-  releases: write
+  actions: read
+  packages: read
 
+# Ne zaman çalışacak
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Manuel çalıştırma
   push:
-    tags: ['v*']
+    tags: ['v*']      # v1.0.0 gibi tag'lerde otomatik
 
 jobs:
   build-windows:
@@ -28,24 +29,23 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller==5.13.0
+        pip install pyinstaller
     
-    - name: Build EXE with PyInstaller
+    - name: Build EXE
       run: |
         pyinstaller --onefile --windowed --name="Karlilik-Analizi" gui.py
     
-    - name: Test EXE
+    - name: Check EXE file
       run: |
         if (Test-Path "dist/Karlilik-Analizi.exe") {
           echo "✅ EXE başarıyla oluşturuldu!"
-          $size = (Get-Item "dist/Karlilik-Analizi.exe").Length / 1MB
-          echo "📦 Dosya boyutu: $([math]::Round($size, 2)) MB"
+          Get-Item "dist/Karlilik-Analizi.exe" | Format-List Name, Length
         } else {
           echo "❌ EXE oluşturulamadı!"
           exit 1
         }
     
-    - name: Upload EXE as artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: Karlilik-Analizi-Windows
@@ -54,15 +54,15 @@ jobs:
     
     - name: Create Release
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
+      uses: ncipollo/release-action@v1
       with:
-        files: dist/Karlilik-Analizi.exe
-        name: Karlılık Analizi ${{ github.ref_name }}
+        artifacts: "dist/Karlilik-Analizi.exe"
+        name: "Karlılık Analizi ${{ github.ref_name }}"
         body: |
           ## 🎉 Karlılık Analizi ${{ github.ref_name }}
           
-          ### 📦 Windows Kullanıcıları İçin
-          - **Karlilik-Analizi.exe** dosyasını indirin
+          ### 📦 Windows için hazır EXE dosyası
+          - Karlilik-Analizi.exe dosyasını indirin
           - Çift tıklayarak çalıştırın
           - Python kurulumuna gerek yoktur
           
@@ -70,7 +70,8 @@ jobs:
           - Windows 10/11 (64-bit)
           - En az 4GB RAM
           
-          📝 Sorun yaşarsanız Issues sayfasından bildirebilirsiniz.
+          ### 🐛 Sorun mu var?
+          Issues sayfasından bildirebilirsiniz.
         draft: false
         prerelease: false
         token: ${{ secrets.GITHUB_TOKEN }}
