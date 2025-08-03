@@ -31,25 +31,22 @@ class VeriAnalizi:
                 if col in self.df.columns:
                     try:
                         # Güvenli numeric conversion
-                        self.df.loc[:, col] = pd.to_numeric(self.df[col], errors='coerce')
-                        # NaN değerleri 0 ile değiştir, ama sadece numeric olmayan değerler için
-                        self.df.loc[:, col] = self.df[col].fillna(0)
+                        self.df[col] = pd.to_numeric(self.df[col], errors='coerce')
+                        # NaN değerleri 0 ile değiştir
+                        self.df[col] = self.df[col].fillna(0)
                     except (KeyError, ValueError, TypeError) as e:
                         print(f"Sütun temizleme hatası {col}: {e}")
                         # Hata durumunda sütunu 0 ile doldur
-                        self.df.loc[:, col] = 0
+                        self.df[col] = 0
             
             # Miktar sütununu bul ve temizle
-            miktar_cols = ['Satış Miktar', 'Satış\nMiktar', 'Satis Miktar', 'Miktar']
-            for col in miktar_cols:
-                if col in self.df.columns:
-                    try:
-                        self.df.loc[:, col] = pd.to_numeric(self.df[col], errors='coerce')
-                        self.df.loc[:, col] = self.df[col].fillna(0)
-                        break  # İlk bulunanı işle ve çık
-                    except (KeyError, ValueError, TypeError) as e:
-                        print(f"Miktar sütunu temizleme hatası {col}: {e}")
-                        continue
+            miktar_col = self.find_miktar_column()
+            if miktar_col and miktar_col in self.df.columns:
+                try:
+                    self.df[miktar_col] = pd.to_numeric(self.df[miktar_col], errors='coerce')
+                    self.df[miktar_col] = self.df[miktar_col].fillna(0)
+                except (KeyError, ValueError, TypeError) as e:
+                    print(f"Miktar sütunu temizleme hatası {miktar_col}: {e}")
                         
         except Exception as e:
             print(f"Genel veri temizleme hatası: {e}")
@@ -159,13 +156,48 @@ class VeriAnalizi:
         
         # Önce tam eşleşme ara
         for col in self.df.columns:
-            col_lower = str(col).lower().strip()
-            for pattern in possible_patterns:
-                if all(term in col_lower for term in pattern):
-                    return col
+            try:
+                col_lower = str(col).lower().strip()
+                for pattern in possible_patterns:
+                    if all(term in col_lower for term in pattern):
+                        return col
+            except (AttributeError, TypeError):
+                continue
         
         # Alternatif: İlk sütunu kullan
         return self.df.columns[0] if len(self.df.columns) > 0 else None
+    
+    def find_miktar_column(self):
+        """Satış miktar sütununu bul"""
+        if self.df.empty:
+            return None
+            
+        # Öncelik sırasına göre arama
+        possible_names = ['Satış Miktar', 'Satış\nMiktar', 'Satis Miktar', 'Miktar']
+        
+        # Tam eşleşme ara
+        for col in self.df.columns:
+            if col in possible_names:
+                return col
+        
+        # Kısmi eşleşme ara
+        for col in self.df.columns:
+            try:
+                col_lower = str(col).lower().strip()
+                if 'miktar' in col_lower and ('satış' in col_lower or 'satis' in col_lower):
+                    return col
+            except (AttributeError, TypeError):
+                continue
+        
+        # Sadece 'miktar' içeren sütun ara
+        for col in self.df.columns:
+            try:
+                if 'miktar' in str(col).lower():
+                    return col
+            except (AttributeError, TypeError):
+                continue
+        
+        return None
     
     def get_top_profitable_products(self, limit=10):
         """En karlı ürünleri döndür"""
@@ -189,7 +221,7 @@ class VeriAnalizi:
             # Net kara göre sırala ve ilk N'i al
             top_df = valid_df.nlargest(limit, 'Net Kar')
             
-            # Sadde gerekli sütunları al
+            # Sadece gerekli sütunları al
             result_cols = [stok_col, 'Net Kar']
             if 'Birim Kar' in top_df.columns:
                 result_cols.append('Birim Kar')
@@ -250,38 +282,6 @@ class VeriAnalizi:
             print(f"Top satan ürünler hatası: {e}")
             return pd.DataFrame()
     
-    def find_miktar_column(self):
-        """Satış miktar sütununu bul"""
-        if self.df.empty:
-            return None
-            
-        # Öncelik sırasına göre arama
-        possible_names = ['Satış Miktar', 'Satış\nMiktar', 'Satis Miktar', 'Miktar']
-        
-        # Tam eşleşme ara
-        for col in self.df.columns:
-            if col in possible_names:
-                return col
-        
-        # Kısmi eşleşme ara
-        for col in self.df.columns:
-            try:
-                col_lower = str(col).lower().strip()
-                if 'miktar' in col_lower and ('satış' in col_lower or 'satis' in col_lower):
-                    return col
-            except (AttributeError, TypeError):
-                continue
-        
-        # Sadece 'miktar' içeren sütun ara
-        for col in self.df.columns:
-            try:
-                if 'miktar' in str(col).lower():
-                    return col
-            except (AttributeError, TypeError):
-                continue
-        
-        return None
-    
     def get_low_profit_products(self, limit=10):
         """En düşük karlı ürünleri döndür"""
         if self.df.empty or 'Net Kar' not in self.df.columns:
@@ -324,7 +324,7 @@ class VeriAnalizi:
             return pd.DataFrame()
     
     def get_profit_distribution(self):
-        """Kar dağılımı analizi"""
+        """Kar dağılımı analizi - DÜZELTİLMİŞ"""
         if self.df.empty or 'Net Kar' not in self.df.columns:
             return {
                 'cok_karli': 0,
@@ -346,32 +346,47 @@ class VeriAnalizi:
                     'zararda': 0
                 }
             
-            # Kar kategorileri - güvenli hesaplama
+            # Zarardaki ürünler
             zararda = len(kar_data[kar_data < 0])
             
-            # Quantile hesaplama - güvenli
-            try:
-                # Sadece pozitif değerler için quantile
-                pozitif_kar = kar_data[kar_data >= 0]
-                if not pozitif_kar.empty and len(pozitif_kar) > 1:
-                    q25 = pozitif_kar.quantile(0.25)
-                    q75 = pozitif_kar.quantile(0.75)
-                else:
-                    q25 = 0
-                    q75 = pozitif_kar.max() if not pozitif_kar.empty else 0
-            except (ValueError, TypeError):
-                q25 = 0
-                q75 = kar_data.max() if not kar_data.empty else 0
+            # Sadece pozitif kar değerleri ile çalış
+            pozitif_kar = kar_data[kar_data >= 0]
             
-            # Kategorilere ayır
-            if q25 == q75:  # Tüm değerler aynı ise
-                dusuk_karli = len(kar_data[(kar_data >= 0) & (kar_data < q75)]) if q75 > 0 else len(kar_data[kar_data >= 0])
-                orta_karli = 0
-                cok_karli = len(kar_data[kar_data >= q75]) if q75 > 0 else 0
-            else:
-                dusuk_karli = len(kar_data[(kar_data >= 0) & (kar_data < q25)])
-                orta_karli = len(kar_data[(kar_data >= q25) & (kar_data < q75)])
-                cok_karli = len(kar_data[kar_data >= q75])
+            if pozitif_kar.empty:
+                # Sadece zararda olan ürünler varsa
+                return {
+                    'cok_karli': 0,
+                    'orta_karli': 0,
+                    'dusuk_karli': 0,
+                    'zararda': int(zararda)
+                }
+            
+            # Pozitif kar için quantile hesaplama
+            if len(pozitif_kar) == 1:
+                # Tek pozitif değer varsa
+                return {
+                    'cok_karli': 1,
+                    'orta_karli': 0,
+                    'dusuk_karli': 0,
+                    'zararda': int(zararda)
+                }
+            
+            try:
+                # Quantile hesaplama - güvenli
+                q33 = pozitif_kar.quantile(0.33)  # Alt %33
+                q67 = pozitif_kar.quantile(0.67)  # Üst %33
+                
+                # Kategorilere ayır
+                dusuk_karli = len(pozitif_kar[pozitif_kar < q33])
+                orta_karli = len(pozitif_kar[(pozitif_kar >= q33) & (pozitif_kar < q67)])
+                cok_karli = len(pozitif_kar[pozitif_kar >= q67])
+                
+            except (ValueError, TypeError):
+                # Quantile hesaplanamıyorsa eşit dağıtım yap
+                pozitif_count = len(pozitif_kar)
+                cok_karli = pozitif_count // 3
+                orta_karli = pozitif_count // 3
+                dusuk_karli = pozitif_count - cok_karli - orta_karli
             
             return {
                 'cok_karli': int(cok_karli),
@@ -414,9 +429,12 @@ class VeriAnalizi:
             except Exception as search_error:
                 # Alternatif arama yöntemi
                 print(f"String arama hatası, alternatif yöntem deneniyor: {search_error}")
-                mask = search_series.str.lower().str.contains(search_term_clean.lower(), na=False)
-                result = self.df[mask]
-                return result.reset_index(drop=True)
+                try:
+                    mask = search_series.str.lower().str.contains(search_term_clean.lower(), na=False)
+                    result = self.df[mask]
+                    return result.reset_index(drop=True)
+                except Exception:
+                    return pd.DataFrame()
             
         except Exception as e:
             print(f"Ürün arama hatası: {e}")

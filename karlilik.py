@@ -61,8 +61,9 @@ class KarlilikAnalizi:
                     value = value.replace(',', '.')
                 
                 return float(value)
-        except:
+        except (ValueError, TypeError):
             return 0.0
+        return 0.0
     
     def find_header_row(self, file_path):
         """Excel dosyasında uygun header satırını bul"""
@@ -222,13 +223,14 @@ class KarlilikAnalizi:
                 if stok_bos and tarih_bos:
                     gercek_stok_adi = str(depo).strip()
                     
+                    # Depo adı kontrollerini daha esnek yap
                     if (gercek_stok_adi != '' and 
                         gercek_stok_adi.lower() != 'nan' and
-                        not gercek_stok_adi.startswith('İZMİR BÖLGE') and
-                        fiyat > 0 and
+                        not any(term in gercek_stok_adi.upper() for term in ['BÖLGE', 'MERKEZ', 'DEPO', 'ŞUBE']) and
+                        self.clean_numeric(fiyat) > 0 and
                         gercek_stok_adi not in fiyat_dict):
                         
-                        fiyat_dict[gercek_stok_adi] = round(fiyat, 2)
+                        fiyat_dict[gercek_stok_adi] = round(self.clean_numeric(fiyat), 2)
                         baslik_sayisi += 1
                         
                         if baslik_sayisi <= 5:
@@ -273,7 +275,8 @@ class KarlilikAnalizi:
                     break
         
         if ort_satis_fiyat_col and ort_satis_fiyat_col in karlilik_df.columns:
-            karlilik_df.loc[:, ort_satis_fiyat_col] = karlilik_df[ort_satis_fiyat_col].apply(self.clean_numeric)
+            # Güvenli assignment - pandas uyarısı önlenmesi
+            karlilik_df[ort_satis_fiyat_col] = karlilik_df[ort_satis_fiyat_col].apply(self.clean_numeric)
             karlilik_df['Birim Kar'] = karlilik_df[ort_satis_fiyat_col] - karlilik_df['Birim Maliyet']
             self.log_message("✓ Birim Kar hesaplandı")
         else:
@@ -296,15 +299,14 @@ class KarlilikAnalizi:
                     break
         
         if satis_miktar_col and satis_miktar_col in karlilik_df.columns:
-            karlilik_df.loc[:, satis_miktar_col] = karlilik_df[satis_miktar_col].apply(self.clean_numeric)
+            # Güvenli assignment - pandas uyarısı önlenmesi
+            karlilik_df[satis_miktar_col] = karlilik_df[satis_miktar_col].apply(self.clean_numeric)
             karlilik_df['Net Kar'] = karlilik_df['Birim Kar'] * karlilik_df[satis_miktar_col]
             self.log_message("✓ Net Kar hesaplandı")
         else:
             karlilik_df['Net Kar'] = 0.0
             self.log_message("Satış Miktar sütunu bulunamadı")
     
-    # karlilik.py dosyasındaki prepare_result_dataframe fonksiyonunu düzelt
-
     def prepare_result_dataframe(self, karlilik_df, stok_ismi_col):
         """Sonuç dataframe'ini hazırla - TÜM ürünleri dahil et"""
         # Sütun seçimi
@@ -335,11 +337,17 @@ class KarlilikAnalizi:
                         istenen_sutunlar.append(alt_isim)
                         break
         
-        # BURADA FİLTRELEME OLMAMALI - TÜM ÜRÜNLER DAHİL EDİLMELİ
-        sonuc_df = karlilik_df[istenen_sutunlar].copy()
-        
-        # ÖNEMLİ: Bu satırı arayın ve varsa silin!
-        # sonuc_df = sonuc_df[sonuc_df['Birim Maliyet'] > 0]  # BU SATIR VARSA SİLİN!
+        # TÜM ÜRÜNLER DAHİL EDİLİR - filtreleme yapılmaz
+        try:
+            sonuc_df = karlilik_df[istenen_sutunlar].copy()
+        except KeyError as e:
+            self.log_message(f"Sütun hatası: {e}, mevcut sütunlar kullanılacak")
+            # Mevcut sütunlardan sadece var olanları al
+            mevcut_sutunlar = [col for col in istenen_sutunlar if col in karlilik_df.columns]
+            if mevcut_sutunlar:
+                sonuc_df = karlilik_df[mevcut_sutunlar].copy()
+            else:
+                sonuc_df = karlilik_df.copy()
         
         # Sıralama
         if 'Net Kar' in sonuc_df.columns and 'Birim Kar' in sonuc_df.columns:
@@ -366,47 +374,52 @@ class KarlilikAnalizi:
             self.log_message("Dosya kaydetme iptal edildi")
             return False
         
-        # Güvenli özet hesaplama
-        total_net_kar = sonuc_df['Net Kar'].sum() if 'Net Kar' in sonuc_df.columns else 0
-        
-        avg_birim_maliyet = 0
-        if 'Birim Maliyet' in sonuc_df.columns:
-            maliyet_data = sonuc_df[sonuc_df['Birim Maliyet'] > 0]['Birim Maliyet']
-            avg_birim_maliyet = maliyet_data.mean() if len(maliyet_data) > 0 else 0
-        
-        avg_birim_kar = 0
-        if 'Birim Kar' in sonuc_df.columns:
-            kar_data = sonuc_df['Birim Kar']
-            avg_birim_kar = kar_data.mean() if len(kar_data) > 0 else 0
-        
-        doluluk_orani = (eslesen_sayisi / len(sonuc_df) * 100) if len(sonuc_df) > 0 else 0
-        
-        # Excel kaydetme
-        with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
-            sonuc_df.to_excel(writer, sheet_name='Karlılık Analizi', index=False)
+        try:
+            # Güvenli özet hesaplama
+            total_net_kar = sonuc_df['Net Kar'].sum() if 'Net Kar' in sonuc_df.columns else 0
             
-            # Özet sayfası
-            ozet_data = {
-                'Bilgi': ['Toplam Stok Sayısı', 'Eşleşen Stok Sayısı', 'Eşleşmeyen Stok Sayısı', 
-                          'Doluluk Oranı (%)', 'Ortalama Birim Maliyet', 'Ortalama Birim Kar', 'Toplam Net Kar'],
-                'Değer': [
-                    len(sonuc_df),
-                    eslesen_sayisi,
-                    len(sonuc_df) - eslesen_sayisi,
-                    f"{doluluk_orani:.1f}",
-                    f"{avg_birim_maliyet:.2f}",
-                    f"{avg_birim_kar:.2f}",
-                    f"{total_net_kar:.2f}"
-                ]
-            }
-            ozet_df = pd.DataFrame(ozet_data)
-            ozet_df.to_excel(writer, sheet_name='Özet', index=False)
+            avg_birim_maliyet = 0
+            if 'Birim Maliyet' in sonuc_df.columns:
+                maliyet_data = sonuc_df[sonuc_df['Birim Maliyet'] > 0]['Birim Maliyet']
+                avg_birim_maliyet = maliyet_data.mean() if len(maliyet_data) > 0 else 0
+            
+            avg_birim_kar = 0
+            if 'Birim Kar' in sonuc_df.columns:
+                kar_data = sonuc_df['Birim Kar']
+                avg_birim_kar = kar_data.mean() if len(kar_data) > 0 else 0
+            
+            doluluk_orani = (eslesen_sayisi / len(sonuc_df) * 100) if len(sonuc_df) > 0 else 0
+            
+            # Excel kaydetme
+            with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
+                sonuc_df.to_excel(writer, sheet_name='Karlılık Analizi', index=False)
+                
+                # Özet sayfası
+                ozet_data = {
+                    'Bilgi': ['Toplam Stok Sayısı', 'Eşleşen Stok Sayısı', 'Eşleşmeyen Stok Sayısı', 
+                              'Doluluk Oranı (%)', 'Ortalama Birim Maliyet', 'Ortalama Birim Kar', 'Toplam Net Kar'],
+                    'Değer': [
+                        len(sonuc_df),
+                        eslesen_sayisi,
+                        len(sonuc_df) - eslesen_sayisi,
+                        f"{doluluk_orani:.1f}",
+                        f"{avg_birim_maliyet:.2f}",
+                        f"{avg_birim_kar:.2f}",
+                        f"{total_net_kar:.2f}"
+                    ]
+                }
+                ozet_df = pd.DataFrame(ozet_data)
+                ozet_df.to_excel(writer, sheet_name='Özet', index=False)
+            
+            self.log_message(f"✓ Sonuçlar kaydedildi: {os.path.basename(output_path)}")
+            self.log_message(f"📊 Özet: {eslesen_sayisi} eşleşen / {len(eslesmeyenler)} eşleşmeyen")
+            self.log_message(f"📈 Doluluk Oranı: %{doluluk_orani:.1f}")
+            
+            return True
         
-        self.log_message(f"✓ Sonuçlar kaydedildi: {os.path.basename(output_path)}")
-        self.log_message(f"📊 Özet: {eslesen_sayisi} eşleşen / {len(eslesmeyenler)} eşleşmeyen")
-        self.log_message(f"📈 Doluluk Oranı: %{doluluk_orani:.1f}")
-        
-        return True
+        except Exception as e:
+            self.log_message(f"Excel kaydetme hatası: {e}")
+            return False
     
     def analyze(self, karlilik_path, iskonto_path):
         """Ana analiz fonksiyonu - DataFrame döndürür"""
@@ -477,9 +490,9 @@ class KarlilikAnalizi:
                 self.log_message("✗ Veriler temizleme sonrası boş kaldı!")
                 return None
             
-            # String temizleme
-            karlilik_df.loc[:, stok_ismi_col] = karlilik_df[stok_ismi_col].astype(str).str.strip().str.upper()
-            iskonto_df.loc[:, iskonto_stok_col] = iskonto_df[iskonto_stok_col].astype(str).str.strip().str.upper()
+            # String temizleme - güvenli assignment
+            karlilik_df[stok_ismi_col] = karlilik_df[stok_ismi_col].astype(str).str.strip().str.upper()
+            iskonto_df[iskonto_stok_col] = iskonto_df[iskonto_stok_col].astype(str).str.strip().str.upper()
             
             # TOPLAM satırlarını kaldır
             karlilik_df = karlilik_df[~karlilik_df[stok_ismi_col].str.contains('TOPLAM|TOTAL|GENEL', case=False, na=False)].copy()
@@ -487,7 +500,8 @@ class KarlilikAnalizi:
             
             self.update_progress(70, "Fiyat bilgileri işleniyor...")
             
-            iskonto_df.loc[:, fiyat_col] = iskonto_df[fiyat_col].apply(self.clean_numeric)
+            # Fiyat sütunu temizleme - güvenli assignment
+            iskonto_df[fiyat_col] = iskonto_df[fiyat_col].apply(self.clean_numeric)
             
             # CSV işleme
             try:
@@ -550,6 +564,6 @@ class KarlilikAnalizi:
                 try:
                     if temp_file and os.path.exists(temp_file):
                         os.unlink(temp_file)
-                except:
+                except Exception:
                     pass
             gc.collect()

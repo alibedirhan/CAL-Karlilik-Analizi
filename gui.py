@@ -645,11 +645,12 @@ class BupilicKarlilikGUI:
             # Eğer bir önceki dashboard varsa kaldır
             if self.dashboard:
                 try:
-                    # Dashboard sekmesini bul ve kaldır
-                    for i in range(self.notebook.index("end")):
+                    # Dashboard sekmesini bul ve kaldır - DÜZELTİLDİ
+                    tab_list = self.notebook.tabs()
+                    for tab_id in tab_list:
                         try:
-                            if self.notebook.tab(i, "text") == "📊 Analiz Dashboard":
-                                self.notebook.forget(i)
+                            if self.notebook.tab(tab_id, "text") == "📊 Analiz Dashboard":
+                                self.notebook.forget(tab_id)
                                 break
                         except tk.TclError:
                             continue
