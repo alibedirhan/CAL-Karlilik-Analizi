@@ -1,4 +1,4 @@
- Ekran Görüntüleri# 📊 Karlılık Analizi Uygulaması
+📊 Karlılık Analizi Uygulaması
 
 Excel tabanlı karlılık ve iskonto raporu analiz uygulaması. İşletmelerin ürün bazlı kar analizlerini kolayca yapabilmelerini sağlar.
 
@@ -84,13 +84,6 @@ Windows kullanıcıları için hazır exe dosyası:
 ├── requirements.txt      # Python bağımlılıkları
 └── README.md            # Bu dosya
 ```
-
-### Katkıda Bulunma
-1. Fork edin
-2. Feature branch oluşturun (`git checkout -b feature/YeniOzellik`)
-3. Commit edin (`git commit -am 'Yeni özellik eklendi'`)
-4. Branch'e push edin (`git push origin feature/YeniOzellik`)
-5. Pull Request açın
 
 ## 📄 Lisans
 
