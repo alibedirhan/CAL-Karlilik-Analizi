@@ -1,4 +1,4 @@
-# 📊 Karlılık Analizi Uygulaması
+ Ekran Görüntüleri# 📊 Karlılık Analizi Uygulaması
 
 Excel tabanlı karlılık ve iskonto raporu analiz uygulaması. İşletmelerin ürün bazlı kar analizlerini kolayca yapabilmelerini sağlar.
 
@@ -70,10 +70,7 @@ Windows kullanıcıları için hazır exe dosyası:
 ## 🖥️ Ekran Görüntüleri
 
 ### Ana Ekran
-![Ana Ekran](docs/screenshots/ana-ekran.png)
-
-### Dashboard
-![Dashboard](docs/screenshots/dashboard.png)
+![Ana Ekran](docs/gifs/karlilik.gif)
 
 ## 🛠️ Geliştirme
 
